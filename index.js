@@ -37,6 +37,23 @@ module.exports = function(options) {
     return crypto.createHash('md5').update(random_string).digest('hex');
   };
 
+  var isInMemory = function(fieldname, mimetype) {
+      if (options.inMemory === true || options.inMemory === false) {
+          return options.inMemory;
+      }
+
+      if ((typeof options.inMemory) === 'object') {
+          if (options.inMemory.hasOwnProperty(fieldname)) {
+              return options.inMemory[fieldname];
+          }
+          if (options.inMemory.hasOwnProperty(mimetype)) {
+              return options.inMemory[mimetype];
+          }
+      }
+
+      return false;
+  };
+
   return function(req, res, next) {
 
     var readFinished = false;
@@ -115,15 +132,17 @@ module.exports = function(options) {
         var bufs = [];
         var ws;
 
-        if (!options.inMemory) {
+        var inMemory = isInMemory(fieldname, mimetype);
+
+        if (!inMemory) {
           ws = fs.createWriteStream(newFilePath);
           fileStream.pipe(ws);
         }
 
         fileStream.on('data', function(data) {
-          if (data) { 
-            if (options.inMemory) bufs.push(data);
-            file.size += data.length; 
+          if (data) {
+            if (inMemory) bufs.push(data);
+            file.size += data.length;
           }
           // trigger "file data" event
           if (options.onFileUploadData) { options.onFileUploadData(file, data, req, res); }
@@ -132,7 +151,7 @@ module.exports = function(options) {
         function onFileStreamEnd() {
           file.truncated = fileStream.truncated;
           if (!req.files[fieldname]) { req.files[fieldname] = []; }
-          if (options.inMemory) file.buffer = Buffer.concat(bufs, file.size);
+          if (inMemory) file.buffer = Buffer.concat(bufs, file.size);
           req.files[fieldname].push(file);
 
           // trigger "file end" event
@@ -143,7 +162,7 @@ module.exports = function(options) {
           onFinish();
         }
 
-        if (options.inMemory)
+        if (inMemory)
           fileStream.on('end', onFileStreamEnd);
         else
           ws.on('finish', onFileStreamEnd);
@@ -164,9 +183,9 @@ module.exports = function(options) {
           else next(error);
         }
 
-        if (options.inMemory)
+        if (inMemory)
           fileStream.on('error', onFileStreamError );
-        else 
+        else
           ws.on('error', onFileStreamError );
 
       });
